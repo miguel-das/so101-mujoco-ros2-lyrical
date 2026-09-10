@@ -1,0 +1,12 @@
+# colcon
+build/
+install/
+log/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Editor temporary files
+*.swp
+*~
