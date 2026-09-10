@@ -10,7 +10,8 @@
     <inertial>
       <origin xyz="0.0137179 -5.19711e-05 0.0334843" rpy="0 0 0" />
       <mass value="0.147" />
-      <inertia ixx="0.000114686" ixy="-4.59787e-07" ixz="4.97151e-06" iyy="0.000136117" iyz="9.75275e-08" izz="0.000130364" />
+      <inertia ixx="0.000114686" ixy="-4.59787e-07" ixz="4.97151e-06" iyy="0.000136117"
+        iyz="9.75275e-08" izz="0.000130364" />
     </inertial>
     <visual>
       <origin xyz="-0.00636471 -9.94414e-05 -0.0024" rpy="1.5708 -1.67685e-15 1.5708" />
@@ -45,7 +46,8 @@
     <inertial>
       <origin xyz="-0.0307604 -1.66727e-05 -0.0252713" rpy="0 0 0" />
       <mass value="0.100006" />
-      <inertia ixx="8.3759e-05" ixy="7.55525e-08" ixz="-1.16342e-06" iyy="8.10403e-05" iyz="1.54663e-07" izz="2.39783e-05" />
+      <inertia ixx="8.3759e-05" ixy="7.55525e-08" ixz="-1.16342e-06" iyy="8.10403e-05"
+        iyz="1.54663e-07" izz="2.39783e-05" />
     </inertial>
     <visual>
       <origin xyz="-0.0303992 0.000422241 -0.0417" rpy="1.5708 1.5708 0" />
@@ -73,7 +75,8 @@
     <inertial>
       <origin xyz="-0.0898471 -0.00838224 0.0184089" rpy="0 0 0" />
       <mass value="0.103" />
-      <inertia ixx="4.08002e-05" ixy="-1.97819e-05" ixz="-4.03016e-08" iyy="0.000147318" iyz="8.97326e-09" izz="0.000142487" />
+      <inertia ixx="4.08002e-05" ixy="-1.97819e-05" ixz="-4.03016e-08" iyy="0.000147318"
+        iyz="8.97326e-09" izz="0.000142487" />
     </inertial>
     <visual>
       <origin xyz="-0.11257 -0.0155 0.0187" rpy="-3.14159 -5.27356e-16 -1.5708" />
@@ -94,7 +97,8 @@
     <inertial>
       <origin xyz="-0.0980701 0.00324376 0.0182831" rpy="0 0 0" />
       <mass value="0.104" />
-      <inertia ixx="2.87438e-05" ixy="7.41152e-06" ixz="1.26409e-06" iyy="0.000159844" iyz="-4.90188e-08" izz="0.00014529" />
+      <inertia ixx="2.87438e-05" ixy="7.41152e-06" ixz="1.26409e-06" iyy="0.000159844"
+        iyz="-4.90188e-08" izz="0.00014529" />
     </inertial>
     <visual>
       <origin xyz="-0.0648499 -0.032 0.0182" rpy="3.14159 -0 6.67202e-31" />
@@ -122,7 +126,8 @@
     <inertial>
       <origin xyz="-0.000103312 -0.0386143 0.0281156" rpy="0 0 0" />
       <mass value="0.079" />
-      <inertia ixx="3.68263e-05" ixy="1.7893e-08" ixz="-5.28128e-08" iyy="2.5391e-05" iyz="3.6412e-06" izz="2.1e-05" />
+      <inertia ixx="3.68263e-05" ixy="1.7893e-08" ixz="-5.28128e-08" iyy="2.5391e-05"
+        iyz="3.6412e-06" izz="2.1e-05" />
     </inertial>
     <visual>
       <origin xyz="8.32667e-17 -0.0424 0.0306" rpy="1.5708 1.5708 0" />
@@ -143,7 +148,8 @@
     <inertial>
       <origin xyz="0.000213627 0.000245138 -0.025187" rpy="0 0 0" />
       <mass value="0.087" />
-      <inertia ixx="2.75087e-05" ixy="-3.35241e-07" ixz="-5.7352e-06" iyy="4.33657e-05" iyz="-5.17847e-08" izz="3.45059e-05" />
+      <inertia ixx="2.75087e-05" ixy="-3.35241e-07" ixz="-5.7352e-06" iyy="4.33657e-05"
+        iyz="-5.17847e-08" izz="3.45059e-05" />
     </inertial>
     <visual>
       <origin xyz="0.0077 0.0001 -0.0234" rpy="-1.5708 -5.19179e-17 -1.66533e-16" />
@@ -178,7 +184,8 @@
     <inertial>
       <origin xyz="-0.00157495 -0.0300244 0.0192755" rpy="0 0 0" />
       <mass value="0.012" />
-      <inertia ixx="6.61427e-06" ixy="-3.19807e-07" ixz="-5.90717e-09" iyy="1.89032e-06" iyz="-1.09945e-07" izz="5.28738e-06" />
+      <inertia ixx="6.61427e-06" ixy="-3.19807e-07" ixz="-5.90717e-09" iyy="1.89032e-06"
+        iyz="-1.09945e-07" izz="5.28738e-06" />
     </inertial>
     <visual>
       <origin xyz="-5.55112e-17 -5.55112e-17 0.0189" rpy="9.53145e-17 6.93889e-18 1.24077e-24" />
@@ -230,4 +237,7 @@
     <axis xyz="0 0 1" />
     <limit effort="10" velocity="10" lower="-1.91986" upper="1.91986" />
   </joint>
+
+  <xacro:include filename="$(find so101_description)/urdf/so101.ros2_control.xacro" />
+  <xacro:so101_ros2_control />
 </robot>
