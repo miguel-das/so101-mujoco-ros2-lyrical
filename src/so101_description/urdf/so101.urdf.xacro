@@ -238,4 +238,7 @@
     <limit effort="10" velocity="10" lower="-1.91986" upper="1.91986" />
   </joint>
 
+  <xacro:include filename="$(find so101_description)/urdf/so101.ros2_control.xacro" />
+  <xacro:so101_ros2_control />
+
 </robot>
