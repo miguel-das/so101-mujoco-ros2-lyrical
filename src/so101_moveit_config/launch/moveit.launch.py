@@ -6,10 +6,11 @@ from moveit_configs_utils import MoveItConfigsBuilder
 
 
 def generate_launch_description():
-    moveit_config = MoveItConfigsBuilder(
-        "so101",
-        package_name="so101_moveit_config",
-    ).to_moveit_configs()
+    moveit_config = (
+        MoveItConfigsBuilder("so101", package_name="so101_moveit_config")
+        .planning_pipelines(pipelines=["ompl"])
+        .to_moveit_configs()
+    )
 
     rviz_config = PathJoinSubstitution(
         [

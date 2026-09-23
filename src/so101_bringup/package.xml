@@ -3,7 +3,7 @@
 <package format="3">
   <name>so101_bringup</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>MuJoCo simulation and ros2_control bringup for the SO101 arm.</description>
   <maintainer email="47686612+miguel-das@users.noreply.github.com">miguel-das</maintainer>
   <license>Apache-2.0</license>
 
