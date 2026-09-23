@@ -239,7 +239,7 @@
     <position class="sts3215" name="shoulder_lift" joint="shoulder_lift" ctrlrange="-1.74533 1.74533"/>
     <position class="sts3215" name="elbow_flex" joint="elbow_flex" ctrlrange="-1.69 1.69"/>
     <position class="sts3215" name="wrist_flex" joint="wrist_flex" ctrlrange="-1.65806 1.65806"/>
-    <position class="sts3215" name="wrist_roll" joint="wrist_roll" ctrlrange="-2.74385 2.84121"/>
+    <position class="sts3215" name="wrist_roll" joint="wrist_roll" ctrlrange="-2.7438473 2.7438473"/>
     <position class="sts3215" name="gripper" joint="gripper" ctrlrange="-0.17453 1.74533"/>
   </actuator>
 </mujoco>

@@ -81,11 +81,23 @@ def generate_launch_description():
         output="screen",
     )
 
+    gripper_controller = Node(
+        package="controller_manager",
+        executable="spawner",
+        arguments=[
+            "gripper_controller",
+            "--param-file",
+            controllers_file,
+        ],
+        output="screen",
+    )
+
     return LaunchDescription(
         [
             robot_state_publisher,
             mujoco_control,
             joint_state_broadcaster,
             arm_controller,
+            gripper_controller,
         ]
     )

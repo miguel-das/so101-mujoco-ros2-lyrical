@@ -309,7 +309,7 @@
     <parent link="wrist_link" />
     <child link="gripper_link" />
     <axis xyz="0 0 1" />
-    <limit effort="10" velocity="10" lower="-2.74385" upper="2.84121" />
+    <limit effort="10" velocity="10" lower="-2.7438473" upper="2.7438473" />
   </joint>
   <joint name="wrist_flex" type="revolute">
     <origin xyz="-0.1349 0.0052 3.62355e-17" rpy="4.02456e-15 8.67362e-16 -1.5708" />
