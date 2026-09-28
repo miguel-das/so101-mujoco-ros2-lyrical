@@ -1,131 +1,131 @@
-"""Position + approach-direction IK for the 5-DOF SO-101 arm.
+"""Closed-form position + approach-pitch IK for the 5-DOF SO-101 arm.
 
-After shoulder_pan the SO-101 is a planar 3R chain plus a wrist roll whose
-axis lies in that plane. A full 6-D pose is therefore not reachable in
-general: at a given TCP position the approach axis must lie (almost) in the
-vertical plane through the pan axis and the target. The goal is posed as
-TCP position (3) + approach direction (2); the rotation about the approach
-axis is left to the solver.
+The arm is a base yaw joint (shoulder_pan), three parallel pitch joints
+(shoulder_lift, elbow_flex, wrist_flex) and a wrist roll whose axis lies in
+the pitch plane. A goal is a TCP position, the approach pitch below the
+horizontal pointing away from the base (pi/2 = straight down, beyond pi/2 =
+tilted back toward the base) and the wrist roll. The approach yaw is not
+part of the goal: it follows from the position through the base yaw joint.
 
-Solved by damped least squares on a finite-difference Jacobian of the
-MoveIt RobotState forward kinematics, so all geometry comes from the loaded
-robot model.
+With the roll fixed, choosing the approach pitch fixes the TCP offset from the
+wrist pitch axis. The base yaw then places the TCP's constant lateral offset,
+and the shoulder and elbow form a planar 2-link chain solved with the law of
+cosines. This gives up to four solutions (arm reaching forward or back over
+itself, elbow up or down).
+
+All geometry is read from the MoveIt robot model at zero joint positions. The
+model frame z axis is assumed vertical.
 """
 
 import numpy as np
 from moveit.core.robot_state import RobotState
 
-
-def radial_approach(position, pan_origin, pitch):
-    """Unit approach vector pointing away from the pan axis, `pitch` rad below horizontal.
-
-    pitch = pi/2 approaches straight down, pitch = 0 horizontally outward.
-    Assumes the pan axis is vertical in the model frame.
-    """
-    dx, dy = position[0] - pan_origin[0], position[1] - pan_origin[1]
-    if np.hypot(dx, dy) < 1e-6:
-        raise ValueError("target lies on the shoulder_pan axis, approach azimuth is undefined")
-    azimuth = np.arctan2(dy, dx)
-    return np.array(
-        [
-            np.cos(pitch) * np.cos(azimuth),
-            np.cos(pitch) * np.sin(azimuth),
-            -np.sin(pitch),
-        ]
-    )
+UP = np.array([0.0, 0.0, 1.0])
 
 
-def _errors(p, u, position, approach):
-    angle = np.arccos(np.clip(np.dot(u, approach), -1.0, 1.0))
-    return np.linalg.norm(position - p), angle
+def _wrap(q):
+    return (q + np.pi) % (2 * np.pi) - np.pi
+
+
+def _rotate(angle, v):
+    c, s = np.cos(angle), np.sin(angle)
+    return np.array([c * v[0] - s * v[1], s * v[0] + c * v[1]])
+
+
+def _angle(v):
+    return np.arctan2(v[1], v[0])
 
 
 class ApproachIK:
-    def __init__(
-        self,
-        robot_model,
-        group,
-        tip_link,
-        approach_axis=2,
-        orientation_weight=0.1,
-        position_tolerance=1e-4,
-        angle_tolerance=1e-3,
-        max_iterations=200,
-        damping=1e-2,
-        max_step=0.3,
-        fd_step=1e-6,
-    ):
+    """Joint order of `group`: base yaw, three pitch joints, wrist roll."""
+
+    def __init__(self, robot_model, group, tip_link, approach_axis=2):
         self._group = group
         self._tip_link = tip_link
         self._axis = approach_axis
-        self._w = orientation_weight
-        self._pos_tol = position_tolerance
-        self._ang_tol = angle_tolerance
-        self._max_iterations = max_iterations
-        self._damping = damping
-        self._max_step = max_step
-        self._h = fd_step
-
         self._state = RobotState(robot_model)
         self._state.set_to_default_values()
         bounds = robot_model.get_joint_model_group(group).active_joint_model_bounds
         self.lower = np.array([b[0].min_position for b in bounds])
         self.upper = np.array([b[0].max_position for b in bounds])
 
-    def link_position(self, link, q=None):
-        if q is not None:
-            self._set(q)
-        return self._state.get_global_link_transform(link)[:3, 3].copy()
+        (yaw_axis, self._origin), *pitch_axes = [self._joint_axis(i) for i in range(4)]
+        self._yaw_sign = np.sign(yaw_axis @ UP)
+        # Planar coordinates: (radial, up), with pitch rotations counter-clockwise about lateral.
+        self._lateral = pitch_axes[0][0]
+        self._radial = np.cross(UP, self._lateral)
+        self._pitch_signs = np.array([np.sign(axis @ self._lateral) for axis, _ in pitch_axes])
+        self._shoulder, elbow, self._wrist = (self._planar(point) for _, point in pitch_axes)
+        self._upper_arm = elbow - self._shoulder
+        self._forearm = self._wrist - elbow
+        self._bend = _angle(self._forearm) - _angle(self._upper_arm)
 
     def forward(self, q):
         """TCP position and approach axis in the model frame."""
-        self._set(q)
-        T = self._state.get_global_link_transform(self._tip_link)
+        T = self._tip(q)
         return T[:3, 3].copy(), T[:3, self._axis].copy()
 
-    def errors(self, q, position, approach):
-        """Position error (m) and approach-axis angle error (rad)."""
-        return _errors(*self.forward(q), position, approach)
+    def pitch(self, q):
+        """Approach pitch below the horizontal direction pointing away from the base yaw axis."""
+        p, u = self.forward(q)
+        outward = np.sign(u[:2] @ (p - self._origin)[:2])
+        return np.arctan2(-u @ UP, outward * np.linalg.norm(u[:2]))
 
-    def solve(self, position, approach, seeds, is_valid=None):
-        """Return the first converged, bounded, valid solution over `seeds`, or None."""
-        position = np.asarray(position, dtype=float)
-        approach = np.asarray(approach, dtype=float)
-        approach = approach / np.linalg.norm(approach)
-        for seed in seeds:
-            q = self._descend(np.clip(np.asarray(seed, dtype=float), self.lower, self.upper), position, approach)
-            if q is not None and (is_valid is None or is_valid(q)):
-                return q
-        return None
+    def errors(self, q, position, pitch):
+        """Position error (m) and approach pitch error (rad)."""
+        p, _ = self.forward(q)
+        return np.linalg.norm(position - p), abs(_wrap(self.pitch(q) - pitch))
 
-    def random_seeds(self, count, rng):
-        return [rng.uniform(self.lower, self.upper) for _ in range(count)]
+    def solve(self, position, pitch, roll):
+        """All joint solutions within limits reaching `position` with the given approach pitch and roll."""
+        tcp, u = self.forward(np.array([0.0, 0.0, 0.0, 0.0, roll]))
+        offset = self._planar(tcp) - self._wrist
+        lateral = (tcp - self._origin) @ self._lateral
+        tilt = _angle([u @ self._radial, u @ UP])
 
-    def _set(self, q):
+        target = np.asarray(position, dtype=float) - self._origin
+        radial2 = target[0] ** 2 + target[1] ** 2 - lateral**2
+        if radial2 < 0.0:
+            return []
+        l1, l2 = np.linalg.norm(self._upper_arm), np.linalg.norm(self._forearm)
+
+        solutions = []
+        for side in (1.0, -1.0):
+            radial = side * np.sqrt(radial2)
+            arm = radial * self._radial + lateral * self._lateral
+            yaw = _angle(target) - _angle(arm)
+            total_pitch = _angle([side * np.cos(pitch), -np.sin(pitch)]) - tilt
+            wrist = np.array([radial, target[2]]) - _rotate(total_pitch, offset)
+            reach = wrist - self._shoulder
+            c = (reach @ reach - l1**2 - l2**2) / (2.0 * l1 * l2)
+            if abs(c) > 1.0 + 1e-5:  # beyond full stretch or fold, with < 1 um slack for URDF rounding
+                continue
+            bend = np.arccos(np.clip(c, -1.0, 1.0))
+            for bend in (bend, -bend):
+                elbow = bend - self._bend
+                shoulder = _angle(reach) - _angle(self._upper_arm + _rotate(elbow, self._forearm))
+                pitches = self._pitch_signs * [shoulder, elbow, total_pitch - shoulder - elbow]
+                q = _wrap(np.array([self._yaw_sign * yaw, *pitches, roll]))
+                if np.all((q >= self.lower) & (q <= self.upper)):
+                    solutions.append(q)
+        return solutions
+
+    def _tip(self, q):
         self._state.set_joint_group_positions(self._group, q)
         self._state.update(True)
+        return self._state.get_global_link_transform(self._tip_link).copy()
 
-    def _task(self, q):
-        p, u = self.forward(q)
-        return np.concatenate([p, self._w * u])
+    def _joint_axis(self, i, angle=1.0):
+        """Direction and one point of joint i's axis at q = 0, from the motion of the tip."""
+        q = np.zeros(self.lower.size)
+        T0 = self._tip(q)
+        q[i] = angle
+        M = self._tip(q) @ np.linalg.inv(T0)
+        R = M[:3, :3]
+        direction = np.array([R[2, 1] - R[1, 2], R[0, 2] - R[2, 0], R[1, 0] - R[0, 1]])
+        point = np.linalg.lstsq(np.eye(3) - R, M[:3, 3], rcond=None)[0]
+        return direction / np.linalg.norm(direction), point
 
-    def _descend(self, q, position, approach):
-        target = np.concatenate([position, self._w * approach])
-        n = q.size
-        for _ in range(self._max_iterations):
-            f = self._task(q)
-            pos_err, ang_err = _errors(f[:3], f[3:] / self._w, position, approach)
-            if pos_err < self._pos_tol and ang_err < self._ang_tol:
-                return q
-            J = np.empty((6, n))
-            for i in range(n):
-                dq = np.zeros(n)
-                dq[i] = self._h
-                J[:, i] = (self._task(q + dq) - f) / self._h
-            e = target - f
-            step = J.T @ np.linalg.solve(J @ J.T + self._damping**2 * np.eye(6), e)
-            norm = np.linalg.norm(step)
-            if norm > self._max_step:
-                step *= self._max_step / norm
-            q = np.clip(q + step, self.lower, self.upper)
-        return None
+    def _planar(self, point):
+        d = point - self._origin
+        return np.array([d @ self._radial, d @ UP])

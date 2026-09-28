@@ -1,9 +1,10 @@
 """Plan (and optionally execute) the SO-101 arm to a Cartesian goal with MoveItPy.
 
 Send a TCP position on ~/goal (geometry_msgs/PointStamped). The gripper
-approaches it from the pan axis outward, `approach_pitch` rad below
-horizontal (pi/2 = straight down). The goal is converted to a joint-space
-goal with ApproachIK and planned with the default MoveItPy pipeline.
+approaches it `approach_pitch` rad below horizontal (pi/2 = straight down),
+keeping the current wrist roll. The goal is converted to a joint-space goal
+with ApproachIK (the collision-free solution closest to the current state)
+and planned with the default MoveItPy pipeline.
 """
 
 import copy
@@ -15,7 +16,7 @@ from geometry_msgs.msg import PointStamped
 from moveit.planning import MoveItPy
 from rclpy.node import Node
 
-from so101_motion.approach_ik import ApproachIK, radial_approach
+from so101_motion.approach_ik import ApproachIK
 
 
 class CartesianGoal(Node):
@@ -23,9 +24,7 @@ class CartesianGoal(Node):
         super().__init__("cartesian_goal")
         self.declare_parameter("planning_group", "arm")
         self.declare_parameter("tip_link", "gripper_frame_link")
-        self.declare_parameter("pan_link", "shoulder_link")
         self.declare_parameter("approach_pitch", math.pi / 2)
-        self.declare_parameter("ik_random_restarts", 20)
         self.declare_parameter("execute", False)
 
         self._group = self.get_parameter("planning_group").value
@@ -35,11 +34,6 @@ class CartesianGoal(Node):
         self._arm = moveit.get_planning_component(self._group)
         self._scene_monitor = moveit.get_planning_scene_monitor()
         self._ik = ApproachIK(self._robot_model, self._group, self._tip_link)
-        # Any point on the shoulder_pan axis; it does not move with the joints.
-        self._pan_origin = self._ik.link_position(
-            self.get_parameter("pan_link").value, np.zeros(self._ik.lower.size)
-        )
-        self._rng = np.random.default_rng()
 
         self.create_subscription(PointStamped, "~/goal", self._on_goal, 1)
         self.get_logger().info(
@@ -50,7 +44,6 @@ class CartesianGoal(Node):
         pitch = self.get_parameter("approach_pitch").value
         try:
             position = self._to_model_frame(msg)
-            approach = radial_approach(position, self._pan_origin, pitch)
         except ValueError as e:
             self.get_logger().error(str(e))
             return
@@ -61,20 +54,21 @@ class CartesianGoal(Node):
 
         self._arm.set_start_state_to_current_state()
         start = self._arm.get_start_state()
-        seed = start.get_joint_group_positions(self._group)
-        seeds = [seed] + self._ik.random_seeds(
-            self.get_parameter("ik_random_restarts").value, self._rng
+        current = np.asarray(start.get_joint_group_positions(self._group))
+        solutions = sorted(
+            self._ik.solve(position, pitch, roll=current[-1]),
+            key=lambda q: np.linalg.norm(q - current),
         )
-        q = self._ik.solve(
-            position, approach, seeds, is_valid=lambda q: self._collision_free(start, q)
-        )
+        q = next((q for q in solutions if self._collision_free(start, q)), None)
         if q is None:
-            self.get_logger().error("No collision-free IK solution: goal unreachable with this approach pitch")
+            self.get_logger().error(
+                "No collision-free IK solution: goal unreachable with this approach pitch"
+            )
             return
-        pos_err, ang_err = self._ik.errors(q, position, approach)
+        pos_err, pitch_err = self._ik.errors(q, position, pitch)
         self.get_logger().info(
             f"IK: q = {np.round(q, 3).tolist()} "
-            f"(pos err {pos_err * 1e3:.2f} mm, approach err {math.degrees(ang_err):.3f} deg)"
+            f"(pos err {pos_err * 1e3:.2f} mm, pitch err {math.degrees(pitch_err):.3f} deg)"
         )
 
         self._arm.set_goal_state(robot_state=self._state(start, q))
@@ -82,7 +76,9 @@ class CartesianGoal(Node):
         if not result:
             self.get_logger().error("Planning failed")
             return
-        self.get_logger().info(f"Planned trajectory: {result.trajectory.duration:.2f} s")
+        self.get_logger().info(
+            f"Planned trajectory: {result.trajectory.duration:.2f} s"
+        )
 
         if self.get_parameter("execute").value:
             self._moveit.execute(result.trajectory, controllers=[])
