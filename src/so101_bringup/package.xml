@@ -3,7 +3,7 @@
 <package format="3">
   <name>so101_bringup</name>
   <version>0.0.0</version>
-  <description>MuJoCo simulation and ros2_control bringup for the SO101 arm.</description>
+  <description>MuJoCo simulation and real hardware ros2_control bringup for the SO101 arm.</description>
   <maintainer email="47686612+miguel-das@users.noreply.github.com">miguel-das</maintainer>
   <license>Apache-2.0</license>
 
@@ -17,6 +17,7 @@
   <exec_depend>robot_state_publisher</exec_depend>
 
   <exec_depend>mujoco_ros2_control</exec_depend>
+  <exec_depend>feetech_ros2_driver</exec_depend>
   <exec_depend>controller_manager</exec_depend>
   <exec_depend>joint_state_broadcaster</exec_depend>
   <exec_depend>joint_trajectory_controller</exec_depend>

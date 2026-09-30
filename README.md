@@ -1,11 +1,11 @@
-# SO101 simulation with MoveIt
+# SO101 with MoveIt
 
-This ROS 2 workspace runs the SO101 arm in MuJoCo through `mujoco_ros2_control`. MoveIt plans motions and sends trajectories to the simulated arm and gripper controllers.
+This ROS 2 workspace runs the SO101 arm in MuJoCo through `mujoco_ros2_control`, or on the real arm through `feetech_ros2_driver`. MoveIt plans motions and sends trajectories to the arm and gripper controllers.
 
 ## Packages
 
 - `so101_description`: URDF, meshes, MuJoCo models, and a standalone model viewer.
-- `so101_bringup`: MuJoCo, `robot_state_publisher`, and ros2_control controllers.
+- `so101_bringup`: MuJoCo or real hardware, `robot_state_publisher`, and ros2_control controllers.
 - `so101_moveit_config`: MoveIt configuration and RViz planning interface.
 
 ## Setup
@@ -40,6 +40,21 @@ ros2 launch so101_moveit_config moveit.launch.py
 In RViz, use the **MotionPlanning** panel. Select the `arm` group, set a joint or pose goal, then choose **Plan & Execute**. Select the `gripper` group to command the jaw; its named `open` and `closed` states are available as goals. MoveIt uses the OMPL planner and the simulated `FollowJointTrajectory` actions. The initial arm pose is the `home` state.
 
 For a model viewer without the simulator or MoveIt, run `ros2 launch so101_description display.launch.py` instead.
+
+## Real robot
+
+The real arm uses [`feetech_ros2_driver`](https://github.com/ros-physical-ai/feetech_ros2_driver), cloned into `src/` and built with the rest of the workspace. Servo IDs must be 1 to 6, from `shoulder_pan` to `gripper`. On WSL2, first attach the USB serial adapter with `usbipd attach --wsl --busid <BUSID>`.
+
+Start the hardware in one terminal, then MoveIt in another:
+
+```bash
+ros2 launch so101_bringup hardware.launch.py
+ros2 launch so101_moveit_config moveit.launch.py use_sim_time:=false
+```
+
+`usb_port` defaults to the follower arm's `/dev/serial/by-id/` path; pass `usb_port:=/dev/ttyACM0` or your own board's path otherwise. Pass `joint_config_file:=/path/joints.yaml` for per-joint calibration such as `homing_offset`.
+
+Servo torque turns on when the hardware starts and turns off when it stops, so hold the arm before pressing Ctrl+C. Every joint must rest inside its URDF limit at startup: `arm_controller` clamps commands to those limits and would snap an out-of-range joint back into range. Check with `ros2 topic echo /joint_states --once` if unsure.
 
 ## Model and control
 

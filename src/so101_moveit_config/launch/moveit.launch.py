@@ -1,11 +1,16 @@
 from launch import LaunchDescription
-from launch.substitutions import PathJoinSubstitution
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 from moveit_configs_utils import MoveItConfigsBuilder
 
 
 def generate_launch_description():
+    # true for MuJoCo, false for the real robot
+    use_sim_time = ParameterValue(LaunchConfiguration("use_sim_time"), value_type=bool)
+
     moveit_config = (
         MoveItConfigsBuilder("so101", package_name="so101_moveit_config")
         .planning_pipelines(pipelines=["ompl"])
@@ -26,7 +31,7 @@ def generate_launch_description():
         output="screen",
         parameters=[
             moveit_config.to_dict(),
-            {"use_sim_time": True},
+            {"use_sim_time": use_sim_time},
         ],
     )
 
@@ -41,7 +46,7 @@ def generate_launch_description():
             moveit_config.robot_description_kinematics,
             moveit_config.planning_pipelines,
             moveit_config.joint_limits,
-            {"use_sim_time": True},
+            {"use_sim_time": use_sim_time},
         ],
     )
 
@@ -59,6 +64,11 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
+            DeclareLaunchArgument(
+                "use_sim_time",
+                default_value="true",
+                description="true with MuJoCo, false with the real robot",
+            ),
             static_world_tf,
             move_group,
             rviz,

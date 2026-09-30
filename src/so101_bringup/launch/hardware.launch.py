@@ -1,12 +1,15 @@
 from launch import LaunchDescription
-from launch.actions import Shutdown
-from launch.substitutions import Command, FindExecutable, PathJoinSubstitution
+from launch.actions import DeclareLaunchArgument, Shutdown
+from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterFile, ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
+
+    usb_port = LaunchConfiguration("usb_port")
+    joint_config_file = LaunchConfiguration("joint_config_file")
 
     xacro_file = PathJoinSubstitution(
         [
@@ -31,8 +34,11 @@ def generate_launch_description():
                     FindExecutable(name="xacro"),
                     " ",
                     xacro_file,
-                    " ",
-                    "hardware_type:=mujoco",
+                    " hardware_type:=real",
+                    " usb_port:=",
+                    usb_port,
+                    " joint_config_file:=",
+                    joint_config_file,
                 ]
             ),
             value_type=str,
@@ -42,51 +48,26 @@ def generate_launch_description():
     robot_state_publisher = Node(
         package="robot_state_publisher",
         executable="robot_state_publisher",
-        parameters=[
-            robot_description,
-            {"use_sim_time": True},
-        ],
+        parameters=[robot_description],
         output="screen",
     )
 
-    mujoco_control = Node(
-        package="mujoco_ros2_control",
+    control_node = Node(
+        package="controller_manager",
         executable="ros2_control_node",
-        parameters=[
-            {"use_sim_time": True},
-            ParameterFile(controllers_file),
-        ],
+        parameters=[ParameterFile(controllers_file)],
+        remappings=[("~/robot_description", "/robot_description")],
         output="screen",
         emulate_tty=True,
         on_exit=Shutdown(),
     )
 
-    joint_state_broadcaster = Node(
+    controllers_spawner = Node(
         package="controller_manager",
         executable="spawner",
         arguments=[
             "joint_state_broadcaster",
-            "--param-file",
-            controllers_file,
-        ],
-        output="screen",
-    )
-
-    arm_controller = Node(
-        package="controller_manager",
-        executable="spawner",
-        arguments=[
             "arm_controller",
-            "--param-file",
-            controllers_file,
-        ],
-        output="screen",
-    )
-
-    gripper_controller = Node(
-        package="controller_manager",
-        executable="spawner",
-        arguments=[
             "gripper_controller",
             "--param-file",
             controllers_file,
@@ -96,10 +77,19 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
+            DeclareLaunchArgument(
+                "usb_port",
+                # Follower arm board; /dev/ttyACM* numbering changes when the leader arm is also plugged in
+                default_value="/dev/serial/by-id/usb-1a86_USB_Single_Serial_5B42133855-if00",
+                description="Serial port of the follower arm's servo bus",
+            ),
+            DeclareLaunchArgument(
+                "joint_config_file",
+                default_value="",
+                description="Optional Feetech per-joint YAML (homing_offset, PID, ...)",
+            ),
             robot_state_publisher,
-            mujoco_control,
-            joint_state_broadcaster,
-            arm_controller,
-            gripper_controller,
+            control_node,
+            controllers_spawner,
         ]
     )

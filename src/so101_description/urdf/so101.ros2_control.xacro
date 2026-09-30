@@ -1,48 +1,65 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-    <xacro:macro name="so101_ros2_control">
+    <xacro:macro name="so101_ros2_control" params="hardware_type usb_port joint_config_file">
+
+        <xacro:property name="is_real" value="${hardware_type == 'real'}" />
 
         <ros2_control name="SO101System" type="system">
 
             <hardware>
-                <plugin>mujoco_ros2_control/MujocoSystemInterface</plugin>
-                <param name="mujoco_model">
+                <xacro:if value="${hardware_type == 'mujoco'}">
+                    <plugin>mujoco_ros2_control/MujocoSystemInterface</plugin>
+                    <param name="mujoco_model">
                     $(find so101_description)/mujoco/scene.xml
                 </param>
+                </xacro:if>
+                <xacro:if value="${is_real}">
+                    <plugin>feetech_ros2_driver/FeetechHardwareInterface</plugin>
+                    <param name="usb_port">${usb_port}</param>
+                    <xacro:if value="${joint_config_file != ''}">
+                        <param name="joint_config_file">${joint_config_file}</param>
+                    </xacro:if>
+                </xacro:if>
             </hardware>
 
             <joint name="shoulder_pan">
+                <xacro:if value="${is_real}"><param name="id">1</param></xacro:if>
                 <command_interface name="position" />
                 <state_interface name="position" />
                 <state_interface name="velocity" />
             </joint>
 
             <joint name="shoulder_lift">
+                <xacro:if value="${is_real}"><param name="id">2</param></xacro:if>
                 <command_interface name="position" />
                 <state_interface name="position" />
                 <state_interface name="velocity" />
             </joint>
 
             <joint name="elbow_flex">
+                <xacro:if value="${is_real}"><param name="id">3</param></xacro:if>
                 <command_interface name="position" />
                 <state_interface name="position" />
                 <state_interface name="velocity" />
             </joint>
 
             <joint name="wrist_flex">
+                <xacro:if value="${is_real}"><param name="id">4</param></xacro:if>
                 <command_interface name="position" />
                 <state_interface name="position" />
                 <state_interface name="velocity" />
             </joint>
 
             <joint name="wrist_roll">
+                <xacro:if value="${is_real}"><param name="id">5</param></xacro:if>
                 <command_interface name="position" />
                 <state_interface name="position" />
                 <state_interface name="velocity" />
             </joint>
 
             <joint name="gripper">
+                <xacro:if value="${is_real}"><param name="id">6</param></xacro:if>
                 <command_interface name="position" />
                 <state_interface name="position" />
                 <state_interface name="velocity" />
