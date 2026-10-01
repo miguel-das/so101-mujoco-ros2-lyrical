@@ -21,6 +21,7 @@ Visualization Manager:
       Robot Description: robot_description
       Trajectory Topic: /display_planned_path
       Loop Animation: true
+      Interrupt Display: true
       State Display Time: 0.05 s
       Robot Alpha: 0.5
       Show Robot Visual: true

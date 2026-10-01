@@ -1,0 +1,18 @@
+# Move the gripper TCP through Cartesian waypoints along straight segments.
+# The arm reaches the first waypoint with a free, collision-checked path.
+
+# n x 5 matrix flattened row by row, one row per waypoint:
+# x, y, z (m), approach pitch below horizontal (rad, pi/2 = straight down),
+# wrist_roll joint angle (rad).
+float64[] waypoints
+# Frame of x, y, z. Empty means the robot model frame.
+string frame_id
+---
+bool success
+# Why the goal failed, was discarded or was canceled.
+string message
+---
+uint8 PLANNING = 0
+uint8 WAITING_FOR_CONFIRMATION = 1
+uint8 EXECUTING = 2
+uint8 state

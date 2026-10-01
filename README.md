@@ -7,8 +7,8 @@ This ROS 2 workspace runs the SO101 arm in MuJoCo through `mujoco_ros2_control`,
 - `so101_description`: URDF, meshes, MuJoCo models, and a standalone model viewer.
 - `so101_bringup`: MuJoCo or real hardware, `robot_state_publisher`, and ros2_control controllers.
 - `so101_moveit_config`: MoveIt configuration and RViz planning interface.
-- `so101_interfaces`: messages and actions, such as `MoveToPoint` and `MoveToJoints`.
-- `so101_motion`: the `motion_server` MoveItPy node, which moves the arm to a Cartesian point or to joint positions through actions.
+- `so101_interfaces`: messages and actions, such as `MoveToPoint`, `MoveToJoints` and `MoveThroughWaypoints`.
+- `so101_motion`: the `motion_server` MoveItPy node, which moves the arm to a Cartesian point, to joint positions or along Cartesian waypoints through actions.
 
 ## Setup
 
@@ -71,9 +71,17 @@ ros2 action send_goal --feedback /motion_server/move_to_joints so101_interfaces/
   "{joint_names: [shoulder_pan, elbow_flex], positions: [0.5, 0.3]}"
 ```
 
+To follow a path, give `MoveThroughWaypoints` an n x 5 matrix, one `x, y, z, pitch, roll` row per waypoint (m and rad; `roll` is the `wrist_roll` joint angle). The arm reaches the first waypoint with a free path, then the gripper moves along straight lines through the others. `send_waypoints` reads the matrix from a CSV or YAML file:
+
+```bash
+ros2 run so101_motion send_waypoints install/so101_motion/share/so101_motion/config/waypoints_square.csv
+```
+
+The example traces a 5 cm square, 5 cm above the base. A YAML file holds a list of rows, either at the top level or under `waypoints:` next to an optional `frame_id:`. The goal fails before anything moves if a segment leaves the arm's reach, collides, or would make a joint jump (near a singularity). The `motion_server` parameters `cartesian_step` (0.005 m), `max_joint_step` (0.1 rad), `max_velocity_scaling_factor` and `max_acceleration_scaling_factor` (0.1) tune the path sampling and speed.
+
 RViz replays each plan in a loop. Press **Next** in the RvizVisualToolsGui panel to execute it, or **Stop** to discard it. Feedback reports `PLANNING`, `WAITING_FOR_CONFIRMATION` and `EXECUTING`, and the result says whether the arm reached the goal.
 
-A new goal on either action replaces a plan that hasn't been executed, and is rejected while the arm is planning or moving. **Stop** or canceling the goal (Ctrl+C in `ros2 action send_goal`) also stops a running motion. Pass `confirm:=false` to execute every plan right away.
+A new goal on any action replaces a plan that hasn't been executed, and is rejected while the arm is planning or moving. **Stop** or canceling the goal (Ctrl+C in `ros2 action send_goal` or `send_waypoints`) also stops a running motion. Pass `confirm:=false` to execute every plan right away.
 
 For a model viewer without the simulator or MoveIt, run `ros2 launch so101_description display.launch.py` instead.
 

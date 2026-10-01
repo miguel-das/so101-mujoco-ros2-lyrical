@@ -10,10 +10,17 @@ current state).
 target positions, given in planning group order or by joint name (unnamed
 joints keep their current position).
 
-Both are planned with the default MoveItPy pipeline. With `confirm` (the
+~/move_through_waypoints (so101_interfaces/MoveThroughWaypoints) reaches the
+first of n (x, y, z, pitch, roll) waypoints with a free path, then moves the
+TCP along straight segments through the others. Each segment is sampled every
+`cartesian_step` m and solved with ApproachIK, keeping the solution closest to
+the previous sample; it fails if a sample is unreachable or in collision, or if
+a joint jumps more than `max_joint_step` rad between samples.
+
+Free paths are planned with the default MoveItPy pipeline. With `confirm` (the
 default), the plan is only previewed in RViz on /display_planned_path. Press
 Next in the RvizVisualToolsGui panel to execute it, or Stop to discard it. A
-new goal on either action replaces a plan still waiting. Stop or canceling the
+new goal on any action replaces a plan still waiting. Stop or canceling the
 goal also stops a running execution.
 """
 
@@ -24,20 +31,28 @@ import threading
 
 import numpy as np
 import rclpy
+from moveit.core.robot_state import robotStateToRobotStateMsg
 from moveit.planning import MoveItPy
+from moveit_msgs.msg import DisplayTrajectory
+from moveit_msgs.msg import RobotTrajectory as RobotTrajectoryMsg
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from sensor_msgs.msg import Joy
+from trajectory_msgs.msg import JointTrajectoryPoint
 
-from so101_interfaces.action import MoveToJoints, MoveToPoint
+from so101_interfaces.action import MoveThroughWaypoints, MoveToJoints, MoveToPoint
 from so101_motion.approach_ik import ApproachIK
 
 # sensor_msgs/Joy published by the rviz_visual_tools RvizVisualToolsGui panel
 GUI_TOPIC = "/rviz_visual_tools_gui"
 NEXT_BUTTON = 1
 STOP_BUTTON = 4
+# Topic of the RViz plan preview, also used by MoveIt's planning pipeline
+DISPLAY_TOPIC = "/display_planned_path"
+# Max pitch or roll change between two samples of a straight segment, in rad
+ANGLE_STEP = 0.02
 
 
 class GoalFailed(Exception):
@@ -72,6 +87,10 @@ class MotionServer(Node):
         self.declare_parameter("planning_group", "arm")
         self.declare_parameter("tip_link", "gripper_frame_link")
         self.declare_parameter("confirm", True)
+        self.declare_parameter("cartesian_step", 0.005)
+        self.declare_parameter("max_joint_step", 0.1)
+        self.declare_parameter("max_velocity_scaling_factor", 0.1)
+        self.declare_parameter("max_acceleration_scaling_factor", 0.1)
 
         self._group = self.get_parameter("planning_group").value
         self._tip_link = self.get_parameter("tip_link").value
@@ -97,6 +116,7 @@ class MotionServer(Node):
         actions = [
             (MoveToPoint, "~/move_to_point", self._plan_point),
             (MoveToJoints, "~/move_to_joints", self._plan_joints),
+            (MoveThroughWaypoints, "~/move_through_waypoints", self._plan_waypoints),
         ]
         group = ReentrantCallbackGroup()
         for action, name, plan in actions:
@@ -116,6 +136,7 @@ class MotionServer(Node):
             10,
             callback_group=MutuallyExclusiveCallbackGroup(),
         )
+        self._display = self.create_publisher(DisplayTrajectory, DISPLAY_TOPIC, 1)
         names = ", ".join(self.resolve_topic_name(name) for _, name, _ in actions)
         self.get_logger().info(f"Ready. Actions: {names}")
 
@@ -222,10 +243,10 @@ class MotionServer(Node):
         return action.Result(success=True, message="Goal reached")
 
     def _plan_point(self, goal):
-        try:
-            position = self._to_model_frame(goal.target)
-        except ValueError as e:
-            raise GoalFailed(str(e))
+        target = goal.target
+        position = self._to_model_frame(
+            [target.point.x, target.point.y, target.point.z], target.header.frame_id
+        )
         pitch = goal.approach_pitch
         self.get_logger().info(
             f"Goal {np.round(position, 4).tolist()} in {self._robot_model.model_frame}, "
@@ -234,11 +255,7 @@ class MotionServer(Node):
 
         start = self._current_state()
         current = np.asarray(start.get_joint_group_positions(self._group))
-        solutions = sorted(
-            self._ik.solve(position, pitch, roll=current[-1]),
-            key=lambda q: np.linalg.norm(q - current),
-        )
-        q = next((q for q in solutions if self._collision_free(start, q)), None)
+        q = self._closest_ik(start, current, position, pitch, current[-1])
         if q is None:
             raise GoalFailed("No collision-free IK solution: goal unreachable with this approach pitch")
         pos_err, pitch_err = self._ik.errors(q, position, pitch)
@@ -282,14 +299,120 @@ class MotionServer(Node):
             raise GoalFailed("Goal joint positions are in collision")
         return self._plan_to(start, q)
 
-    def _plan_to(self, start, q):
+    def _plan_waypoints(self, goal):
+        values = np.asarray(goal.waypoints, dtype=float)
+        if values.size == 0 or values.size % 5:
+            raise GoalFailed(
+                f"Expected n x 5 values (x, y, z, pitch, roll per waypoint), got {values.size}"
+            )
+        waypoints = values.reshape(-1, 5)
+        for w in waypoints:
+            w[:3] = self._to_model_frame(w[:3], goal.frame_id)
+        self.get_logger().info(
+            f"{len(waypoints)} waypoints in {self._robot_model.model_frame} "
+            "(x, y, z, pitch, roll):\n" + np.array2string(np.round(waypoints, 4))
+        )
+
+        start = self._current_state()
+        current = np.asarray(start.get_joint_group_positions(self._group))
+        first = self._closest_ik(start, current, *self._split(waypoints[0]))
+        if first is None:
+            raise GoalFailed("Waypoint 1 is unreachable or in collision")
+
+        path = [first]
+        for k in range(1, len(waypoints)):
+            path += self._straight_segment(start, path[-1], waypoints[k - 1], waypoints[k], k)
+
+        # The free path's trajectory also carries the planning group that time
+        # parameterization needs, which RobotTrajectory() can't set from Python.
+        trajectory = self._plan_to(start, first, log=False)
+        if np.max(np.abs(first - current)) > 1e-3:
+            approach = trajectory.get_robot_trajectory_msg().joint_trajectory
+            order = [list(approach.joint_names).index(j) for j in self._joints]
+            path = [np.asarray(p.positions)[order] for p in approach.points][:-1] + path
+        else:
+            path = [current] + path
+        self._retime(trajectory, start, path)
+        self.get_logger().info(
+            f"Planned trajectory: {trajectory.duration:.2f} s through {len(waypoints)} waypoints"
+        )
+        self._display.publish(
+            DisplayTrajectory(
+                model_id=self._robot_model.name,
+                trajectory=[trajectory.get_robot_trajectory_msg()],
+                trajectory_start=robotStateToRobotStateMsg(start),
+            )
+        )
+        return trajectory
+
+    def _straight_segment(self, start, q, a, b, k):
+        """Joint positions along the straight segment from waypoint `a` to `b`, `a` excluded."""
+        step = self.get_parameter("cartesian_step").value
+        max_joint_step = self.get_parameter("max_joint_step").value
+        samples = max(
+            1,
+            math.ceil(np.linalg.norm(b[:3] - a[:3]) / step),
+            math.ceil(np.max(np.abs(b[3:] - a[3:])) / ANGLE_STEP),
+        )
+        segment = []
+        for i in range(1, samples + 1):
+            t = i / samples
+            where = f"Segment {k} -> {k + 1} at {t:.0%}"
+            position, pitch, roll = self._split(a + t * (b - a))
+            solutions = self._ik.solve(position, pitch, roll)
+            if not solutions:
+                raise GoalFailed(f"{where}: unreachable")
+            previous = q
+            q = min(solutions, key=lambda s: np.max(np.abs(s - previous)))
+            jump = np.max(np.abs(q - previous))
+            if jump > max_joint_step:
+                raise GoalFailed(
+                    f"{where}: a joint jumps {jump:.2f} rad between samples "
+                    "(near a singularity or the edge of the workspace)"
+                )
+            if not self._collision_free(start, q):
+                raise GoalFailed(f"{where}: in collision")
+            segment.append(q)
+        return segment
+
+    def _retime(self, trajectory, start, path):
+        """Replace `trajectory` with a time-parameterized one through the joint positions in `path`."""
+        msg = RobotTrajectoryMsg()
+        msg.joint_trajectory.joint_names = self._joints
+        msg.joint_trajectory.points = [
+            JointTrajectoryPoint(positions=q.tolist()) for q in path
+        ]
+        trajectory.set_robot_trajectory_msg(start, msg)
+        # A tight path tolerance keeps TOTG from rounding the straight segments
+        if not trajectory.apply_totg_time_parameterization(
+            self.get_parameter("max_velocity_scaling_factor").value,
+            self.get_parameter("max_acceleration_scaling_factor").value,
+            path_tolerance=0.001,
+            resample_dt=0.05,
+        ):
+            raise GoalFailed("Time parameterization failed")
+
+    def _closest_ik(self, start, current, position, pitch, roll):
+        """Collision-free IK solution closest to `current`, or None."""
+        solutions = sorted(
+            self._ik.solve(position, pitch, roll),
+            key=lambda q: np.linalg.norm(q - current),
+        )
+        return next((q for q in solutions if self._collision_free(start, q)), None)
+
+    @staticmethod
+    def _split(waypoint):
+        return waypoint[:3], waypoint[3], waypoint[4]
+
+    def _plan_to(self, start, q, log=True):
         self._arm.set_goal_state(robot_state=self._state(start, q))
         result = self._arm.plan()
         if not result:
             raise GoalFailed("Planning failed")
-        self.get_logger().info(
-            f"Planned trajectory: {result.trajectory.duration:.2f} s"
-        )
+        if log:
+            self.get_logger().info(
+                f"Planned trajectory: {result.trajectory.duration:.2f} s"
+            )
         return result.trajectory
 
     def _current_state(self):
@@ -312,14 +435,13 @@ class MotionServer(Node):
         goal_handle.canceled()
         return action.Result(success=False, message="Canceled")
 
-    def _to_model_frame(self, msg):
-        p = np.array([msg.point.x, msg.point.y, msg.point.z])
-        frame = msg.header.frame_id
+    def _to_model_frame(self, point, frame):
+        p = np.asarray(point, dtype=float)
         if not frame or frame == self._robot_model.model_frame:
             return p
         with self._scene_monitor.read_only() as scene:
             if not scene.knows_frame_transform(frame):
-                raise ValueError(f"Unknown frame '{frame}'")
+                raise GoalFailed(f"Unknown frame '{frame}'")
             T = scene.get_frame_transform(frame)
         return T[:3, :3] @ p + T[:3, 3]
 
