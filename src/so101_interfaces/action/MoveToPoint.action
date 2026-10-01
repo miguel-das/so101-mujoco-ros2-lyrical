@@ -1,0 +1,15 @@
+# Move the gripper TCP to a point, approaching it at a fixed pitch.
+
+# TCP position. An empty frame_id means the robot model frame.
+geometry_msgs/PointStamped target
+# Approach angle below horizontal, in rad: pi/2 points the gripper straight down.
+float64 approach_pitch 1.5707963267948966
+---
+bool success
+# Why the goal failed, was discarded or was canceled.
+string message
+---
+uint8 PLANNING = 0
+uint8 WAITING_FOR_CONFIRMATION = 1
+uint8 EXECUTING = 2
+uint8 state

@@ -7,6 +7,8 @@ This ROS 2 workspace runs the SO101 arm in MuJoCo through `mujoco_ros2_control`,
 - `so101_description`: URDF, meshes, MuJoCo models, and a standalone model viewer.
 - `so101_bringup`: MuJoCo or real hardware, `robot_state_publisher`, and ros2_control controllers.
 - `so101_moveit_config`: MoveIt configuration and RViz planning interface.
+- `so101_interfaces`: messages and actions, such as `MoveToPoint` and `MoveToJoints`.
+- `so101_motion`: the `motion_server` MoveItPy node, which moves the arm to a Cartesian point or to joint positions through actions.
 
 ## Setup
 
@@ -38,6 +40,40 @@ ros2 launch so101_moveit_config moveit.launch.py
 ```
 
 In RViz, use the **MotionPlanning** panel. Select the `arm` group, set a joint or pose goal, then choose **Plan & Execute**. Select the `gripper` group to command the jaw; its named `open` and `closed` states are available as goals. MoveIt uses the OMPL planner and the simulated `FollowJointTrajectory` actions. The initial arm pose is the `home` state.
+
+### Motion actions
+
+`so101_motion` starts the arm, RViz and the `motion_server` node from a single launch file. It uses MuJoCo by default; pass `hardware:=real` for the real arm (`usb_port` and `joint_config_file` work as in `hardware.launch.py`):
+
+```bash
+ros2 launch so101_motion motion.launch.py
+ros2 launch so101_motion motion.launch.py hardware:=real
+```
+
+The RViz panel needs `rviz_visual_tools` (`sudo apt install ros-lyrical-rviz-visual-tools`). Send a gripper position as a `MoveToPoint` action goal:
+
+```bash
+ros2 action send_goal --feedback /motion_server/move_to_point so101_interfaces/action/MoveToPoint \
+  "{target: {header: {frame_id: base_link}, point: {x: 0.2, y: 0.0, z: 0.05}}}"
+```
+
+The node plans a move that reaches the point with the gripper pointing straight down (set `approach_pitch` in the goal to tilt it). Joint positions go to `MoveToJoints`: one value in rad per arm joint, in the order `shoulder_pan`, `shoulder_lift`, `elbow_flex`, `wrist_flex`, `wrist_roll`:
+
+```bash
+ros2 action send_goal --feedback /motion_server/move_to_joints so101_interfaces/action/MoveToJoints \
+  "{positions: [0.5, 0.0, 0.3, 0.0, 0.0]}"
+```
+
+To move only some joints, name them; the others keep their current position:
+
+```bash
+ros2 action send_goal --feedback /motion_server/move_to_joints so101_interfaces/action/MoveToJoints \
+  "{joint_names: [shoulder_pan, elbow_flex], positions: [0.5, 0.3]}"
+```
+
+RViz replays each plan in a loop. Press **Next** in the RvizVisualToolsGui panel to execute it, or **Stop** to discard it. Feedback reports `PLANNING`, `WAITING_FOR_CONFIRMATION` and `EXECUTING`, and the result says whether the arm reached the goal.
+
+A new goal on either action replaces a plan that hasn't been executed, and is rejected while the arm is planning or moving. **Stop** or canceling the goal (Ctrl+C in `ros2 action send_goal`) also stops a running motion. Pass `confirm:=false` to execute every plan right away.
 
 For a model viewer without the simulator or MoveIt, run `ros2 launch so101_description display.launch.py` instead.
 

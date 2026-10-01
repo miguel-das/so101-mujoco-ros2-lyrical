@@ -1,0 +1,17 @@
+# Move the arm joints to target positions, in rad.
+
+# Without joint_names: one position per arm joint, in planning group order
+# (shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll).
+# With joint_names: one position per named joint; the others keep their
+# current position.
+float64[] positions
+string[] joint_names
+---
+bool success
+# Why the goal failed, was discarded or was canceled.
+string message
+---
+uint8 PLANNING = 0
+uint8 WAITING_FOR_CONFIRMATION = 1
+uint8 EXECUTING = 2
+uint8 state
