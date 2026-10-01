@@ -75,14 +75,6 @@ def generate_launch_description():
         output="screen",
     )
 
-    default_joint_config_file = PathJoinSubstitution(
-        [
-            FindPackageShare("so101_bringup"),
-            "config",
-            "follower_joints.yaml",
-        ]
-    )
-
     return LaunchDescription(
         [
             DeclareLaunchArgument(
@@ -93,8 +85,8 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "joint_config_file",
-                default_value=default_joint_config_file,
-                description="Feetech per-joint YAML (homing_offset, PID, ...); empty string to use URDF params only",
+                default_value="",
+                description="Optional Feetech per-joint YAML (homing_offset, PID, ...)",
             ),
             robot_state_publisher,
             control_node,
