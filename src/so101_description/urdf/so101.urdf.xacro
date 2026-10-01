@@ -334,7 +334,8 @@
     <parent link="shoulder_link" />
     <child link="upper_arm_link" />
     <axis xyz="0 0 1" />
-    <limit effort="10" velocity="10" lower="-1.74533" upper="1.74533" />
+    <!-- Lower bound covers the folded rest pose on the real arm (calibrated range_min ~ -1.896 rad) -->
+    <limit effort="10" velocity="10" lower="-1.9" upper="1.74533" />
   </joint>
   <joint name="shoulder_pan" type="revolute">
     <origin xyz="0.0388353 -8.97657e-09 0.0624" rpy="3.14159 4.18253e-17 -3.14159" />

@@ -43,7 +43,22 @@ For a model viewer without the simulator or MoveIt, run `ros2 launch so101_descr
 
 ## Real robot
 
-The real arm uses [`feetech_ros2_driver`](https://github.com/ros-physical-ai/feetech_ros2_driver), cloned into `src/` and built with the rest of the workspace. Servo IDs must be 1 to 6, from `shoulder_pan` to `gripper`. On WSL2, first attach the USB serial adapter with `usbipd attach --wsl --busid <BUSID>`.
+The real arm uses [`feetech_ros2_driver`](https://github.com/ros-physical-ai/feetech_ros2_driver), included as a git submodule in `src/` (run `git submodule update --init` after cloning) and built with the rest of the workspace. Servo IDs must be 1 to 6, from `shoulder_pan` to `gripper`. On WSL2, first attach the USB serial adapter with `usbipd attach --wsl --busid <BUSID>`.
+
+## Important: Generate the follower hardware calibration
+
+Before starting the real SO-101, calibrate it with LeRobot. The resulting calibration JSON contains each joint's `id`, `homing_offset`, `range_min`, and `range_max`. Convert these values into `src/so101_bringup/config/follower_joints.yaml`, which `feetech_ros2_driver` uses for the real robot. **Repeat this step for each physical follower arm: calibration values are robot-specific.**
+
+Run this command from the workspace root, supplying your own calibration JSON path:
+
+```bash
+python3 scripts/generate_follower_joint_config.py \
+  ~/.cache/huggingface/lerobot/calibration/robots/so_follower/my_awesome_follower_arm.json
+```
+
+You can replace this path with a custom path to your calibration file.
+
+### Start the real robot
 
 Start the hardware in one terminal, then MoveIt in another:
 
@@ -52,7 +67,7 @@ ros2 launch so101_bringup hardware.launch.py
 ros2 launch so101_moveit_config moveit.launch.py use_sim_time:=false
 ```
 
-`usb_port` defaults to the follower arm's `/dev/serial/by-id/` path; pass `usb_port:=/dev/ttyACM0` or your own board's path otherwise. Pass `joint_config_file:=/path/joints.yaml` for per-joint calibration such as `homing_offset`.
+`joint_config_file` defaults to the installed `so101_bringup/config/follower_joints.yaml`, so run `colcon build --packages-select so101_bringup` after generating it (with `--symlink-install`, only the first time is needed). `usb_port` defaults to the follower arm's `/dev/serial/by-id/` path; pass `usb_port:=/dev/ttyACM0` or your own board's path otherwise. To use a calibration YAML stored elsewhere, pass its absolute path with `joint_config_file:=/path/joints.yaml`.
 
 Servo torque turns on when the hardware starts and turns off when it stops, so hold the arm before pressing Ctrl+C. Every joint must rest inside its URDF limit at startup: `arm_controller` clamps commands to those limits and would snap an out-of-range joint back into range. Check with `ros2 topic echo /joint_states --once` if unsure.
 
